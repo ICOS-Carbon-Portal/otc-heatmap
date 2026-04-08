@@ -34,7 +34,7 @@ The `--timeout 300` is important because the initial data fetch from ICOS can ta
 
 ```bash
 docker build -t otc-kpi .
-docker run -p 8050:8050 otc-kpi
+docker run -p 8050:8050 -v ~/.icoscp:/root/.icoscp otc-kpi
 ```
 
 ## Configuration

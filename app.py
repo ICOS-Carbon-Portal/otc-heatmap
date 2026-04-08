@@ -43,10 +43,17 @@ server = app.server  # exposed for gunicorn
 # to avoid fetching data twice on startup.
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("DASH_DEBUG", "false").lower() != "true":
     logger.info("Initial data load …")
-    _data = load_data()
-    _kpi_pct = _data["kpi_pct"]
-    ALL_MONTHS = list(_kpi_pct.columns)
-    N_MONTHS_TOTAL = len(ALL_MONTHS)
+    try:
+        _data = load_data()
+        _kpi_pct = _data["kpi_pct"]
+        ALL_MONTHS = list(_kpi_pct.columns)
+        N_MONTHS_TOTAL = len(ALL_MONTHS)
+    except Exception as exc:
+        logger.error("Initial data load failed: %s — app will retry on first request.", exc)
+        _data = None
+        _kpi_pct = None
+        ALL_MONTHS = []
+        N_MONTHS_TOTAL = 0
 else:
     _data = None
     _kpi_pct = None
