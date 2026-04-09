@@ -67,7 +67,7 @@ app.layout = html.Div([
 
     dcc.Location(id="url", refresh=False),
 
-    html.H1("OTC KPI Dashboard", style={"textAlign": "center", "marginTop": 20}),
+    html.H1("OTC KPI Dashboard Z", style={"textAlign": "center", "marginTop": 20}),
 
     html.P(
         "",
