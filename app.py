@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 app = Dash(
     __name__,
-    title="OTC KPI Dashboard",
+    title="OTC KPI Dashboard Z",
     update_title="Loading…",
 )
 server = app.server  # exposed for gunicorn
