@@ -43,17 +43,10 @@ server = app.server  # exposed for gunicorn
 # to avoid fetching data twice on startup.
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("DASH_DEBUG", "false").lower() != "true":
     logger.info("Initial data load …")
-    try:
-        _data = load_data()
-        _kpi_pct = _data["kpi_pct"]
-        ALL_MONTHS = list(_kpi_pct.columns)
-        N_MONTHS_TOTAL = len(ALL_MONTHS)
-    except Exception as exc:
-        logger.error("Initial data load failed: %s — app will retry on first request.", exc)
-        _data = None
-        _kpi_pct = None
-        ALL_MONTHS = []
-        N_MONTHS_TOTAL = 0
+    _data = load_data()
+    _kpi_pct = _data["kpi_pct"]
+    ALL_MONTHS = list(_kpi_pct.columns)
+    N_MONTHS_TOTAL = len(ALL_MONTHS)
 else:
     _data = None
     _kpi_pct = None
@@ -182,6 +175,7 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
     kpi_pct = d["kpi_pct"]
     kpi_nvalid = d["kpi_nvalid"]
     kpi_nqc2 = d["kpi_nqc2"]
+    kpi_ndays = d["kpi_ndays"]
     nrt_latest = d["nrt_latest"]
     nrt_urls = d["nrt_urls"]
     nrt_start = d["nrt_start"]
@@ -195,6 +189,7 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
     pct = kpi_pct[cols]
     nv = kpi_nvalid[cols]
     nq = kpi_nqc2[cols]
+    nd = kpi_ndays[cols]
 
 
     stations = list(pct.index)
@@ -219,8 +214,9 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
                 f"Month: {col_labels[c]}<br>"
                 + (
                     f"QC2: {z[r][c]:.1f}%<br>"
-                    f"Valid points: {int(nv.iloc[r, c])}<br>"
-                    f"QC2 points: {int(nq.iloc[r, c])}"
+                    f"Days with valid measurements: {int(nd.iloc[r, c])}<br>"
+                    f"Valid measurements: {int(nv.iloc[r, c])}<br>"
+                    f"QC2 measurements: {int(nq.iloc[r, c])}"
                     if pd.notna(z[r][c])
                     else ("No level 2 data published" if last_data_col[r] == -1
                           else ("No level 2 since last release" if c > last_data_col[r] else "No level 2 data"))
@@ -232,8 +228,16 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
     ]
 
     nrt_labels = [
-        f"{nrt_start.get(s, '?')} → {nrt_latest.get(s, '?')[:10]}"
-        if nrt_latest.get(s) else "—"
+        (
+            f'<a href="{nrt_urls.get(s, "")}" target="_blank">'
+            f"{nrt_start.get(s, '?')} → {nrt_latest.get(s, '?')[:10]}"
+            f"</a>"
+        )
+        if nrt_latest.get(s) and nrt_urls.get(s)
+        else (
+            f"{nrt_start.get(s, '?')} → {nrt_latest.get(s, '?')[:10]}"
+            if nrt_latest.get(s) else "—"
+        )
         for s in stations
     ]
 
@@ -294,7 +298,15 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
         ),
         yaxis=dict(
             range=[len(stations) - 0.5, -0.5],
+            tickmode="array",
+            tickvals=list(range(len(stations))),
+            ticktext=[
+                f'<a href="{station_uri_lookup.get(s, "")}" target="_blank">{s}</a>'
+                if station_uri_lookup.get(s) else s
+                for s in stations
+            ],
             title="<b>Station</b>",
+            ticklabelstandoff=15,
             tickfont=dict(size=13, family="Arial, sans-serif"),
             title_font=dict(size=15, family="Arial, sans-serif"),
             showgrid=False,
@@ -308,12 +320,13 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
             tickvals=list(range(len(stations))),
             ticktext=nrt_labels,
             title="",
+            ticklabelstandoff=15,
             showgrid=False,
             zeroline=False,
             tickfont=dict(size=13, family="Arial, sans-serif"),
         ),
         height=max(400, 36 * len(stations) + 140),
-        margin=dict(l=200, r=200, t=70, b=90),
+        margin=dict(l=280, r=200, t=70, b=90),
         paper_bgcolor="#fafafa",
         plot_bgcolor="#fafafa",
     )
@@ -369,6 +382,15 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
                 "<extra></extra>"
             ),
         ))
+        fig.add_annotation(
+            text="<b>NRT</b>",
+            x=bar_end, y=station,
+            xref="x2", yref="y",
+            showarrow=False,
+            xanchor="right",
+            xshift=3,
+            font=dict(size=11, color="rgba(80,80,80,0.8)", family="Arial, sans-serif"),
+        )
 
     # Build link table
     table_rows = []

@@ -145,13 +145,16 @@ def _process_station(station_id: str, station_dobjs: list) -> pd.DataFrame | Non
     kpi_df["TIMESTAMP"] = pd.to_datetime(kpi_df["TIMESTAMP"])
     kpi_df["Month"] = kpi_df["TIMESTAMP"].dt.to_period("M")
 
+    valid_df = kpi_df.dropna(subset=[KPI_COL])
+    valid_df = valid_df[valid_df[KPI_COL].str.isdigit()]
+
     monthly_kpi = (
-        kpi_df
-        .dropna(subset=[KPI_COL])
-        .groupby(["Station", "Month"])[KPI_COL]
+        valid_df
+        .groupby(["Station", "Month"])
         .agg(
-            n_valid=lambda x: x.str.isdigit().sum(),
-            n_qc2=lambda x: (x == "2").sum(),
+            n_valid=(KPI_COL, "size"),
+            n_qc2=(KPI_COL, lambda x: (x == "2").sum()),
+            n_days=("TIMESTAMP", lambda x: x.dt.normalize().nunique()),
         )
         .reset_index()
     )
@@ -159,14 +162,14 @@ def _process_station(station_id: str, station_dobjs: list) -> pd.DataFrame | Non
     return monthly_kpi
 
 
-def _fetch_level2(disk: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
+def _fetch_level2(disk: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict]:
     """Fetch Level-2 data incrementally.
 
     For each station, list its data objects (fast — metadata only). If the set
     of URIs matches the cached fingerprint, reuse the cached monthly stats.
     Only re-download and reprocess stations where the data has changed.
 
-    Returns (kpi_pct, kpi_nvalid, kpi_nqc2, station_uri_lookup, updated_disk).
+    Returns (kpi_pct, kpi_nvalid, kpi_nqc2, kpi_ndays, station_uri_lookup, updated_disk).
     """
     os_stations = [
         s for s in meta.list_stations(OCEAN_STATION)
@@ -204,12 +207,14 @@ def _fetch_level2(disk: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
             monthly_rows.append(pd.DataFrame({
                 "Station": [station_id],
                 "Month": [pd.Period.now("M")],
-                "n_valid": [0], "n_qc2": [0],
+                "n_valid": [0], "n_qc2": [0], "n_days": [0],
                 "percentage_qc2": [np.nan],
             }))
             continue
 
-        if station_id in cached_fingerprints and current_fp == cached_fingerprints[station_id]:
+        if (station_id in cached_fingerprints
+                and current_fp == cached_fingerprints[station_id]
+                and "n_days" in cached_station_data.get(station_id, pd.DataFrame()).columns):
             logger.info("Station %s (%d/%d) — unchanged, using cache",
                         station_id, i, len(os_stations))
             monthly_rows.append(cached_station_data[station_id])
@@ -241,7 +246,7 @@ def _fetch_level2(disk: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
         "fingerprints": updated_fingerprints,
         "station_data": cached_station_data,
     }
-    return pivot("percentage_qc2"), pivot("n_valid"), pivot("n_qc2"), station_uri_lookup, updated_disk
+    return pivot("percentage_qc2"), pivot("n_valid"), pivot("n_qc2"), pivot("n_days"), station_uri_lookup, updated_disk
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +270,7 @@ def load_data(force: bool = False) -> dict:
         l2_latest, l2_urls = _build_l2_latest_lookups(l2_latest_df)
 
         disk = _load_disk_cache()
-        kpi_pct, kpi_nvalid, kpi_nqc2, station_uri_lookup, updated_disk = _fetch_level2(disk)
+        kpi_pct, kpi_nvalid, kpi_nqc2, kpi_ndays, station_uri_lookup, updated_disk = _fetch_level2(disk)
         _save_disk_cache(updated_disk)
 
     except Exception as exc:
@@ -282,6 +287,7 @@ def load_data(force: bool = False) -> dict:
         "kpi_pct": kpi_pct,
         "kpi_nvalid": kpi_nvalid,
         "kpi_nqc2": kpi_nqc2,
+        "kpi_ndays": kpi_ndays,
         "station_uri_lookup": station_uri_lookup,
         "l2_latest": l2_latest,
         "l2_urls": l2_urls,
