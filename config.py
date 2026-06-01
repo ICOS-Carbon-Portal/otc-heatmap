@@ -70,6 +70,18 @@ WHERE {
 ORDER BY DESC(?timeEnd)
 """
 
+OPERATIONAL_PERIOD_QUERY = """
+PREFIX cpmeta: <http://meta.icos-cp.eu/ontologies/cpmeta/>
+
+SELECT ?station ?operationalPeriod
+FROM <http://meta.icos-cp.eu/resources/icos/>
+FROM <http://meta.icos-cp.eu/resources/extrastations/>
+WHERE {
+    ?station a cpmeta:OS .
+    ?station cpmeta:hasOperationalPeriod ?operationalPeriod .
+}
+"""
+
 NRT_QUERY = """
 PREFIX cpmeta: <http://meta.icos-cp.eu/ontologies/cpmeta/>
 PREFIX prov:   <http://www.w3.org/ns/prov#>

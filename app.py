@@ -182,6 +182,7 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
     station_uri_lookup = d["station_uri_lookup"]
     l2_latest = d["l2_latest"]
     l2_urls = d["l2_urls"]
+    operational_period = d["operational_period"]
 
     n = max(1, min(n or DEFAULT_N_MONTHS, len(kpi_pct.columns)))
 
@@ -207,6 +208,12 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
         for row in z
     ]
 
+    # Per-station operational-period note (optional free-text metadata).
+    op_period_note = [
+        operational_period.get(s, "")
+        for s in stations
+    ]
+
     hover = [
         [
             (
@@ -214,13 +221,14 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
                 f"Month: {col_labels[c]}<br>"
                 + (
                     f"QC2: {z[r][c]:.1f}%<br>"
-                    f"Days with valid measurements: {int(nd.iloc[r, c])}<br>"
-                    f"Valid measurements: {int(nv.iloc[r, c])}<br>"
-                    f"QC2 measurements: {int(nq.iloc[r, c])}"
+                    f"Days with measurements: {int(nd.iloc[r, c])}<br>"
+                    f"Total measurements: {int(nv.iloc[r, c])}<br>"
+                    f"Good measurements: {int(nq.iloc[r, c])}"
                     if pd.notna(z[r][c])
                     else ("No level 2 data published" if last_data_col[r] == -1
                           else ("No level 2 since last release" if c > last_data_col[r] else "No level 2 data"))
                 )
+                + (f"<br>{op_period_note[r]}" if op_period_note[r] else "")
             )
             for c in range(len(col_labels))
         ]
