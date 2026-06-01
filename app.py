@@ -202,17 +202,14 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
         for row in z
     ]
 
-    # Per-station index of the last month that has Level-2 data
-    last_data_col = [
-        max((i for i, v in enumerate(row) if pd.notna(v)), default=-1)
-        for row in z
-    ]
-
-    # Per-station operational-period note (optional free-text metadata).
-    op_period_note = [
-        operational_period.get(s, "")
-        for s in stations
-    ]
+    # Per-station last month with Level-2 data, over the FULL history (not just
+    # the visible window) — otherwise the hover wrongly reports "no data
+    # published" for stations whose data lies entirely before the shown months.
+    last_l2_month = {}
+    for s in stations:
+        row = kpi_pct.loc[s]
+        valid = row.index[row.notna()]
+        last_l2_month[s] = valid.max() if len(valid) else None
 
     hover = [
         [
@@ -220,15 +217,14 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
                 f"<b>{stations[r]}</b><br>"
                 f"Month: {col_labels[c]}<br>"
                 + (
-                    f"QC2: {z[r][c]:.1f}%<br>"
                     f"Days with measurements: {int(nd.iloc[r, c])}<br>"
                     f"Total measurements: {int(nv.iloc[r, c])}<br>"
-                    f"Good measurements: {int(nq.iloc[r, c])}"
+                    f"Good measurements: {int(nq.iloc[r, c])} ({z[r][c]:.1f}%)"
                     if pd.notna(z[r][c])
-                    else ("No level 2 data published" if last_data_col[r] == -1
-                          else ("No level 2 since last release" if c > last_data_col[r] else "No level 2 data"))
+                    else ("No level 2 data published" if last_l2_month[stations[r]] is None
+                          else ("No level 2 since last release" if cols[c] > last_l2_month[stations[r]]
+                                else "No level 2 data"))
                 )
-                + (f"<br>{op_period_note[r]}" if op_period_note[r] else "")
             )
             for c in range(len(col_labels))
         ]
@@ -314,7 +310,7 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
                 for s in stations
             ],
             title="<b>Station</b>",
-            ticklabelstandoff=15,
+            ticklabelstandoff=26,
             tickfont=dict(size=13, family="Arial, sans-serif"),
             title_font=dict(size=15, family="Arial, sans-serif"),
             showgrid=False,
@@ -347,6 +343,29 @@ def update_heatmap(n, cmap_name, _refresh_clicks):
         showarrow=False,
         font=dict(size=15, family="Arial, sans-serif"),
     )
+
+    # Info icon next to the station name (left y-axis) for stations that declare
+    # an operational period. Hovering the icon reveals the period text.
+    # Annotations are the only margin-capable element that supports hover, so the
+    # icon both marks and triggers the tooltip.
+    for station in stations:
+        period = operational_period.get(station)
+        if not period:
+            continue
+        fig.add_annotation(
+            text="ⓘ",  # U+24D8 circled "i" info glyph
+            x=0, xref="paper", xanchor="right", xshift=-4,
+            y=station, yref="y",
+            showarrow=False,
+            font=dict(size=14, color="#1a73e8", family="Arial, sans-serif"),
+            hovertext=period,
+            hoverlabel=dict(
+                bgcolor="#ffffff",
+                bordercolor="#1a73e8",
+                font=dict(size=12, color="#222", family="Arial, sans-serif"),
+            ),
+            captureevents=True,
+        )
 
     # Invisible trace to activate yaxis2
     fig.add_trace(go.Scatter(
