@@ -13,7 +13,10 @@ import numpy as np
 from icoscp_core.icos import data, meta, OCEAN_STATION
 from icoscp_core.sparql import as_string, as_uri
 
-from config import IGNORE_STATIONS, KPI_COL, NRT_QUERY, L2_LATEST_QUERY, CACHE_TTL, DISK_CACHE_PATH
+from config import (
+    IGNORE_STATIONS, KPI_COL, NRT_QUERY, L2_LATEST_QUERY,
+    OPERATIONAL_PERIOD_QUERY, CACHE_TTL, DISK_CACHE_PATH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,26 @@ def _build_nrt_lookups(nrt_df: pd.DataFrame) -> tuple[dict, dict, dict]:
     nrt_urls = info["DataObject"].to_dict()
     nrt_start = info["DataStartTime"].dt.tz_localize(None).dt.strftime("%Y-%m-%d").to_dict()
     return nrt_latest, nrt_urls, nrt_start
+
+
+# ---------------------------------------------------------------------------
+# Station operational period (SPARQL)
+# ---------------------------------------------------------------------------
+def _fetch_operational_periods() -> dict:
+    """Return {station_id: operationalPeriod} for stations that declare one.
+
+    The operational period is an optional free-text station attribute, so this
+    lookup is sparse — only stations that set it appear in the result.
+    """
+    station_uri_to_id = {
+        s.uri: s.id
+        for s in meta.list_stations(OCEAN_STATION)
+    }
+    return {
+        station_uri_to_id.get(as_uri("station", r), as_uri("station", r)):
+            as_string("operationalPeriod", r)
+        for r in meta.sparql_select(OPERATIONAL_PERIOD_QUERY).bindings
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +292,8 @@ def load_data(force: bool = False) -> dict:
         l2_latest_df = _fetch_l2_latest()
         l2_latest, l2_urls = _build_l2_latest_lookups(l2_latest_df)
 
+        operational_period = _fetch_operational_periods()
+
         disk = _load_disk_cache()
         kpi_pct, kpi_nvalid, kpi_nqc2, kpi_ndays, station_uri_lookup, updated_disk = _fetch_level2(disk)
         _save_disk_cache(updated_disk)
@@ -291,6 +316,7 @@ def load_data(force: bool = False) -> dict:
         "station_uri_lookup": station_uri_lookup,
         "l2_latest": l2_latest,
         "l2_urls": l2_urls,
+        "operational_period": operational_period,
         "nrt_latest": nrt_latest,
         "nrt_urls": nrt_urls,
         "nrt_start": nrt_start,
